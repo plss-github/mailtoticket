@@ -1,0 +1,222 @@
+<style>
+   .mtt-action .mtt-section { border-left: 3px solid var(--tblr-primary, #206bc4); padding-left: .75rem; }
+   .mtt-action .mtt-section-title { font-weight: 600; text-transform: uppercase; font-size: .72rem; letter-spacing: .04em; color: var(--tblr-secondary, #6c7a91); margin-bottom: .5rem; }
+   .mtt-action .mtt-box { border: 1px solid var(--tblr-border-color, #e6e7e9); border-radius: .5rem; padding: .75rem 1rem; }
+   .mtt-action .mtt-footer { position: sticky; bottom: 0; z-index: 2; }
+   .mtt-action .select2-container { width: 100% !important; }
+   /* o conteúdo do tooltip (botão "i" do dropdown) só deve aparecer ao passar o mouse; fora das telas legadas o GLPI não o esconde */
+   #mtt_form .tooltip-invisible, #mtt_form [id^="comment_"] { display: none !important; }
+
+   .mtt-mail .mail-body { overflow-x: auto; overflow-wrap: anywhere; max-width: 100%; }
+   .mtt-mail .mail-body img { max-width: 100%; height: auto; }
+   .mtt-mail .mail-body table { max-width: 100%; }
+   .mtt-mail .mail-body pre { white-space: pre-wrap; }
+   .mtt-mail dd { overflow-wrap: anywhere; }
+   .mtt-mail .mtt-badges { display: flex; flex-wrap: wrap; gap: .25rem; }
+</style>
+<div class="card mtt-mail">
+   <div class="card-header d-flex justify-content-between align-items-center gap-3">
+      <h3 class="card-title mb-0 text-break">{{ subject ?: __('(sem assunto)', 'mailtoticket') }}</h3>
+      <a class="btn btn-outline-secondary" href="{{ back }}"><i class="ti ti-arrow-left me-1"></i>{{ __('Voltar', 'mailtoticket') }}</a>
+   </div>
+   <div class="card-body">
+      <dl class="row mb-3">
+         <dt class="col-sm-2">{{ __('Caixa', 'mailtoticket') }}</dt><dd class="col-sm-10">{{ mailbox_name }}</dd>
+         <dt class="col-sm-2">{{ __('De', 'mailtoticket') }}</dt><dd class="col-sm-10">{{ from }}</dd>
+         {% if to %}<dt class="col-sm-2">{{ __('Para', 'mailtoticket') }}</dt><dd class="col-sm-10">{{ to }}</dd>{% endif %}
+         {% if cc %}<dt class="col-sm-2">Cc</dt><dd class="col-sm-10">{{ cc }}</dd>{% endif %}
+         {% if date %}<dt class="col-sm-2">{{ __('Data', 'mailtoticket') }}</dt><dd class="col-sm-10">{{ date|date('d/m/Y H:i') }}</dd>{% endif %}
+         {% if attachments %}
+            <dt class="col-sm-2">{{ __('Anexos', 'mailtoticket') }}</dt>
+            <dd class="col-sm-10 mtt-badges">{% for a in attachments %}<span class="badge bg-secondary me-1"><i class="ti ti-paperclip"></i> {{ a }}</span>{% endfor %}</dd>
+         {% endif %}
+      </dl>
+      <hr>
+      <div class="mail-body">{{ body_html|raw }}</div>
+   </div>
+   </div>
+</div>
+
+{# ================= Ação sobre o e-mail ================= #}
+{% if tickets_id %}
+   <div class="alert alert-success d-flex align-items-center gap-3 mt-3 mb-0">
+      <i class="ti ti-circle-check fs-1"></i>
+      <div class="flex-grow-1">
+         <strong>{{ is_followup ? __('Este e-mail foi adicionado como acompanhamento.', 'mailtoticket') : __('Este e-mail já virou chamado.', 'mailtoticket') }}</strong>
+      </div>
+      <a class="btn btn-success" href="{{ ticket_url }}?id={{ tickets_id }}"><i class="ti ti-ticket me-1"></i>{{ __('Abrir chamado', 'mailtoticket') }} #{{ tickets_id }}</a>
+   </div>
+
+{% elseif discarded %}
+   <form method="post" action="{{ base }}/discard.php" class="alert alert-secondary d-flex align-items-center gap-3 mt-3 mb-0">
+      <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="mailbox" value="{{ mailbox_id }}">
+      <input type="hidden" name="one" value="{{ key }}">
+      <input type="hidden" name="return" value="{{ self }}">
+      <i class="ti ti-trash fs-1"></i>
+      <div class="flex-grow-1"><strong>{{ __('Este e-mail foi descartado.', 'mailtoticket') }}</strong>
+         <div class="small">{{ __('Restaure-o para poder abrir um chamado ou acompanhamento.', 'mailtoticket') }}</div></div>
+      {% if can_discard %}<button type="submit" name="action" value="restore" class="btn btn-outline-primary"><i class="ti ti-arrow-back-up me-1"></i>{{ __('Restaurar', 'mailtoticket') }}</button>{% endif %}
+   </form>
+
+{% elseif can_create %}
+   <form method="post" action="{{ self }}" id="mtt_form" class="card mtt-action mt-3">
+      <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+      <div class="card-header">
+         <h3 class="card-title"><i class="ti ti-bolt me-1"></i>{{ __('O que fazer com este e-mail?', 'mailtoticket') }}</h3>
+      </div>
+
+      <div class="card-body d-flex flex-column gap-4">
+
+         {# 1) Escolha da ação (sempre visível; os campos de cada ação só aparecem quando ela está selecionada) #}
+         {% set can_fu = related and not related.closed and related.can_followup %}
+         <div>
+            <div class="mtt-section-title">{{ __('1. Escolha a ação', 'mailtoticket') }}</div>
+            <div class="form-selectgroup form-selectgroup-boxes d-flex flex-column flex-lg-row gap-2">
+               {% if related %}
+                  <label class="form-selectgroup-item flex-fill {{ can_fu ? '' : 'opacity-50' }}">
+                     <input type="radio" name="mode" value="followup" class="form-selectgroup-input" {{ can_fu ? 'checked' : 'disabled' }}>
+                     <div class="form-selectgroup-label d-flex align-items-start p-3">
+                        <div class="me-3 mt-1"><span class="form-selectgroup-check"></span></div>
+                        <div class="min-w-0">
+                           <div class="fw-bold"><i class="ti ti-message-plus me-1"></i>{{ __('Acompanhamento do chamado', 'mailtoticket') }} #{{ related.id }}</div>
+                           <div class="text-muted small text-break">{{ related.name }} <span class="badge bg-secondary ms-1">{{ related.status }}</span></div>
+                           <div class="text-muted small mt-1">
+                              {% if related.closed %}{{ __('Indisponível: o chamado está fechado.', 'mailtoticket') }}
+                              {% elseif not related.can_followup %}{{ __('Indisponível: você não pode adicionar acompanhamentos nele.', 'mailtoticket') }}
+                              {% elseif related.via == 'code' %}{{ __('Reconhecido pelo código do chamado.', 'mailtoticket') }}
+                              {% elseif related.via == 'thread' %}{{ __('Reconhecido pela conversa (resposta a e-mail já importado).', 'mailtoticket') }}
+                              {% elseif related.via == 'subject' %}{{ __('Mesmo assunto de e-mail já importado — confirme.', 'mailtoticket') }}
+                              {% else %}{{ __('Código no corpo da mensagem — confirme.', 'mailtoticket') }}{% endif %}
+                              · <a href="{{ related.url }}" target="_blank">{{ __('ver chamado', 'mailtoticket') }} <i class="ti ti-external-link"></i></a>
+                           </div>
+                        </div>
+                     </div>
+                  </label>
+               {% endif %}
+               <label class="form-selectgroup-item flex-fill">
+                  <input type="radio" name="mode" value="new" class="form-selectgroup-input" {{ can_fu ? '' : 'checked' }}>
+                  <div class="form-selectgroup-label d-flex align-items-start p-3">
+                     <div class="me-3 mt-1"><span class="form-selectgroup-check"></span></div>
+                     <div>
+                        <div class="fw-bold"><i class="ti ti-ticket me-1"></i>{{ __('Abrir um novo chamado', 'mailtoticket') }}</div>
+                        <div class="text-muted small">
+                           {% if related %}{{ __('Cria um chamado novo, ligado ao chamado', 'mailtoticket') }} #{{ related.id }}
+                           {% else %}{{ __('Cria um chamado a partir deste e-mail.', 'mailtoticket') }}{% endif %}
+                        </div>
+                     </div>
+                  </div>
+               </label>
+            </div>
+         </div>
+
+         {# 2a) Dados do novo chamado #}
+         {# o contêiner que mostra/esconde NÃO pode ter .d-flex (display:flex !important vence o display:none) #}
+         <div id="mtt_new_fields" style="{{ can_fu ? 'display:none' : '' }}">
+         <div class="d-flex flex-column gap-4">
+            <div class="mtt-section">
+               <div class="mtt-section-title">{{ __('2. Dados do novo chamado', 'mailtoticket') }}</div>
+               <div class="row g-3">
+                  <div class="col-lg-5">
+                     <label class="form-label">{{ __('Categoria', 'mailtoticket') }} <span class="text-danger">*</span></label>
+                     {{ category_html|raw }}
+                  </div>
+                  <div class="col-lg-7">
+                     <label class="form-label" for="mtt_title">{{ __('Título do chamado', 'mailtoticket') }}</label>
+                     <input type="text" class="form-control" id="mtt_title" name="title" value="{{ default_title }}"
+                            placeholder="{{ __('Se vazio, usa o assunto do e-mail', 'mailtoticket') }}">
+                     <label class="form-check form-switch mt-2 mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="mtt_use_category" checked>
+                        <span class="form-check-label">{{ __('Usar o nome da categoria como título', 'mailtoticket') }}</span>
+                     </label>
+                  </div>
+               </div>
+            </div>
+
+            <div class="mtt-section">
+               <div class="mtt-section-title">{{ __('3. Requerente', 'mailtoticket') }}</div>
+               <div class="mtt-box d-flex align-items-start gap-3">
+                  <span class="avatar {{ sender_user ? 'bg-green-lt' : 'bg-yellow-lt' }}"><i class="ti {{ sender_user ? 'ti-user-check' : 'ti-mail' }}"></i></span>
+                  <div class="flex-grow-1 min-w-0">
+                     {% if sender_user %}
+                        <div class="fw-bold text-break"><a href="{{ sender_user.url }}" target="_blank">{{ sender_user.name }}</a>
+                           <span class="text-muted fw-normal">({{ sender_user.login }})</span>
+                           {% if not sender_user.active %}<span class="badge bg-warning-lt">{{ __('usuário inativo', 'mailtoticket') }}</span>{% endif %}</div>
+                        <div class="text-muted small">{{ __('Usuário do GLPI: será associado ao chamado.', 'mailtoticket') }}</div>
+                     {% else %}
+                        <div class="fw-bold text-break">{{ sender_email ?: __('(remetente desconhecido)', 'mailtoticket') }}</div>
+                        <div class="text-muted small">{{ __('Sem usuário no GLPI: só o e-mail entra no chamado, para receber notificações. Nenhum usuário é criado.', 'mailtoticket') }}</div>
+                     {% endif %}
+                  </div>
+                  <label class="form-check form-switch m-0 text-nowrap">
+                     <input class="form-check-input" type="checkbox" role="switch" id="mtt_requester" name="use_requester" value="1" checked>
+                     <span class="form-check-label">{{ __('Usar como requerente', 'mailtoticket') }}</span>
+                  </label>
+               </div>
+            </div>
+         </div>
+
+         </div>
+
+         {# 2b) Opções do acompanhamento #}
+         {% if related and not related.closed and related.can_followup %}
+            <div id="mtt_followup_opts" class="mtt-section" style="{{ can_fu ? '' : 'display:none' }}">
+               <div class="mtt-section-title">{{ __('2. Opções do acompanhamento', 'mailtoticket') }}</div>
+               <div class="mtt-box d-flex align-items-start gap-3">
+                  <span class="avatar bg-azure-lt"><i class="ti ti-eye"></i></span>
+                  <div class="flex-grow-1 min-w-0">
+                     {% if related.sender_role %}
+                        <div class="fw-bold">{{ __('O remetente já participa do chamado', 'mailtoticket') }}</div>
+                        <div class="text-muted small">
+                           {{ __('Ele já é', 'mailtoticket') }}
+                           {{ {'requester': __('requerente', 'mailtoticket'), 'observer': __('observador', 'mailtoticket'), 'assigned': __('atribuído', 'mailtoticket')}[related.sender_role] }}
+                           {{ __('deste chamado; não é preciso adicioná-lo.', 'mailtoticket') }}
+                        </div>
+                     {% elseif related.can_observer %}
+                        <div class="fw-bold">{{ __('Adicionar o remetente como observador', 'mailtoticket') }}</div>
+                        <div class="text-muted small text-break">{{ sender_user ? sender_user.name : sender_email }}
+                           — {{ __('passa a acompanhar o chamado e a receber as notificações.', 'mailtoticket') }}</div>
+                     {% else %}
+                        <div class="fw-bold">{{ __('Adicionar o remetente como observador', 'mailtoticket') }}</div>
+                        <div class="text-muted small">{{ __('Você não tem permissão para alterar os atores deste chamado.', 'mailtoticket') }}</div>
+                     {% endif %}
+                  </div>
+                  {% if not related.sender_role and related.can_observer %}
+                     <label class="form-check form-switch m-0 text-nowrap">
+                        <input class="form-check-input" type="checkbox" role="switch" name="add_observer" value="1">
+                        <span class="form-check-label">{{ __('Adicionar', 'mailtoticket') }}</span>
+                     </label>
+                  {% endif %}
+               </div>
+            </div>
+         {% endif %}
+      </div>
+
+      {# Rodapé: resumo + ações #}
+      <div class="card-footer mtt-footer d-flex flex-wrap align-items-center justify-content-between gap-3">
+         <div id="mtt_preview" class="small flex-grow-1 text-break"></div>
+         <div class="d-flex gap-2 flex-shrink-0">
+            {% if can_discard %}
+               <button type="submit" form="mtt_discard_form" name="action" value="discard" class="btn btn-outline-danger"
+                       title="{{ __('Descartar este e-mail (não abrir chamado)', 'mailtoticket') }}"><i class="ti ti-trash me-1"></i>{{ __('Descartar', 'mailtoticket') }}</button>
+            {% endif %}
+            <button type="submit" id="mtt_submit_new" name="create_ticket" value="1" class="btn btn-primary" style="{{ can_fu ? 'display:none' : '' }}">
+               <i class="ti ti-ticket me-1"></i>{{ __('Abrir chamado', 'mailtoticket') }}
+            </button>
+            <button type="submit" id="mtt_submit_followup" name="add_followup" value="1" class="btn btn-primary" style="{{ can_fu ? '' : 'display:none' }}">
+               <i class="ti ti-message-plus me-1"></i>{{ __('Adicionar acompanhamento', 'mailtoticket') }}
+            </button>
+         </div>
+      </div>
+   </form>
+
+   {% if can_discard %}
+      <form method="post" action="{{ base }}/discard.php" id="mtt_discard_form">
+         <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="mailbox" value="{{ mailbox_id }}">
+         <input type="hidden" name="one" value="{{ key }}">
+         <input type="hidden" name="return" value="{{ back }}">
+      </form>
+   {% endif %}
+   {{ js|raw }}
+{% endif %}

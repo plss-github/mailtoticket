@@ -1,0 +1,147 @@
+{% if mailboxes is empty %}
+   <div class="alert alert-info">
+      {{ __('Nenhuma caixa de e-mail ativa cadastrada.', 'mailtoticket') }}
+      {% if can_manage %}<a href="{{ form_url }}">{{ __('Cadastrar caixa', 'mailtoticket') }}</a>{% endif %}
+   </div>
+{% else %}
+
+   <form method="get" action="{{ base }}/messages.php" class="card card-body mb-3 py-2">
+      <div class="row g-2 align-items-end mb-2 pb-2 border-bottom">
+         <div class="col-lg-6 col-xl-5">
+            <label class="form-label mb-1 d-flex justify-content-between align-items-center">
+               <span><i class="ti ti-inbox me-1"></i>{{ __('Caixa de e-mail', 'mailtoticket') }}
+                  <span class="text-muted fw-normal">({{ mailboxes|length }})</span></span>
+            </label>
+            {{ mailbox_select|raw }}
+         </div>
+      </div>
+      <div class="row g-2 align-items-end">
+         <div class="col-md-2">
+            <label class="form-label mb-1">{{ __('Mostrar', 'mailtoticket') }}</label>
+            <select name="status" class="form-select">
+               <option value="pending" {{ status == 'pending' ? 'selected' }}>{{ __('Pendentes (sem chamado)', 'mailtoticket') }}</option>
+               <option value="linked" {{ status == 'linked' ? 'selected' }}>{{ __('Com chamado', 'mailtoticket') }}</option>
+               <option value="discarded" {{ status == 'discarded' ? 'selected' }}>{{ __('Descartados', 'mailtoticket') }}</option>
+               <option value="all" {{ status == 'all' ? 'selected' }}>{{ __('Todos', 'mailtoticket') }}</option>
+            </select>
+         </div>
+         <div class="col-md-3">
+            <label class="form-label mb-1">{{ __('Buscar (assunto ou remetente)', 'mailtoticket') }}</label>
+            <input type="text" name="q" class="form-control" value="{{ filters.q }}" maxlength="100">
+         </div>
+         <div class="col-md-2">
+            <label class="form-label mb-1">{{ __('Desde', 'mailtoticket') }}</label>
+            <input type="date" name="since" class="form-control" value="{{ filters.since }}">
+         </div>
+         <div class="col-md-2">
+            <label class="form-label mb-1">{{ __('Até', 'mailtoticket') }}</label>
+            <input type="date" name="until" class="form-control" value="{{ filters.until }}">
+         </div>
+         <div class="col-md-1">
+            <div class="form-check mb-2">
+               <input class="form-check-input" type="checkbox" name="unseen" value="1" id="mtt_unseen" {{ filters.unseen ? 'checked' }}>
+               <label class="form-check-label" for="mtt_unseen">{{ __('Não lidos', 'mailtoticket') }}</label>
+            </div>
+         </div>
+         <div class="col-md-2 d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="ti ti-filter me-1"></i>{{ __('Filtrar', 'mailtoticket') }}</button>
+            <a class="btn btn-outline-secondary" href="{{ base }}/messages.php?mailbox={{ current }}" title="{{ __('Limpar filtros', 'mailtoticket') }}"><i class="ti ti-x"></i></a>
+            <a class="btn btn-outline-secondary" href="{{ refresh_url }}" title="{{ __('Atualizar a lista (a lista fica em cache por 1 minuto)', 'mailtoticket') }}"><i class="ti ti-refresh"></i></a>
+         </div>
+      </div>
+   </form>
+
+   {% if error %}
+      <div class="alert alert-danger">
+         <strong>{{ __('Não foi possível ler a caixa:', 'mailtoticket') }}</strong> {{ error }}
+         <div class="small mt-1">{{ __('Confira os dados da caixa e use "Testar conexão" no cadastro. Caixas com falha aparecem com ⚠ na lista.', 'mailtoticket') }}</div>
+      </div>
+   {% else %}
+      <form method="post" action="{{ base }}/discard.php">
+         <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+         <input type="hidden" name="mailbox" value="{{ current }}">
+         <input type="hidden" name="return" value="{{ return_url }}">
+         <input type="hidden" name="one" value="">
+         <div class="card">
+            {% if can_discard and items is not empty %}
+               <div class="card-header py-2 d-flex gap-2 align-items-center">
+                  {% if status == 'discarded' %}
+                     <button type="submit" name="action" value="restore" onclick="this.form.one.value = ''" class="btn btn-sm btn-outline-primary"><i class="ti ti-arrow-back-up me-1"></i>{{ __('Restaurar selecionados', 'mailtoticket') }}</button>
+                  {% else %}
+                     <button type="submit" name="action" value="discard" onclick="this.form.one.value = ''" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash me-1"></i>{{ __('Descartar selecionados', 'mailtoticket') }}</button>
+                  {% endif %}
+                  <span class="text-muted small">{{ __('Marque os e-mails na primeira coluna.', 'mailtoticket') }}</span>
+               </div>
+            {% endif %}
+            <div class="table-responsive">
+               <table class="table table-hover card-table">
+                  <thead>
+                     <tr>
+                        {% if can_discard %}<th style="width:32px"><input type="checkbox" class="form-check-input" onclick="document.querySelectorAll('.mtt-sel').forEach(c => c.checked = this.checked)"></th>{% endif %}
+                        <th>{{ __('De', 'mailtoticket') }}</th>
+                        <th>{{ __('Assunto', 'mailtoticket') }}</th>
+                        <th>{{ __('Data', 'mailtoticket') }}</th>
+                        <th>{{ __('Situação', 'mailtoticket') }}</th>
+                        <th></th>
+                     </tr>
+                  </thead>
+                  <tbody>
+                     {% for m in items %}
+                        {% set view = base ~ '/message.php?mailbox=' ~ current ~ '&uid=' ~ (m.uid|url_encode) %}
+                        <tr class="{{ m.unseen ? 'fw-bold' : '' }} {{ m.discarded ? 'text-muted' : '' }}">
+                           {% if can_discard %}<td>{% if not m.tickets_id %}<input type="checkbox" class="form-check-input mtt-sel" name="keys[]" value="{{ m.key }}">{% endif %}</td>{% endif %}
+                           <td>{{ m.from }}</td>
+                           <td><a href="{{ view }}">{{ m.subject ?: __('(sem assunto)', 'mailtoticket') }}</a></td>
+                           <td>{{ m.date ? m.date|date('d/m/Y H:i') : '' }}</td>
+                           <td>
+                              {% if m.tickets_id %}
+                                 <a class="badge {{ m.followup ? 'bg-azure-lt text-azure' : 'bg-green-lt text-green' }}" href="{{ ticket_url }}?id={{ m.tickets_id }}">
+                                    <i class="ti {{ m.followup ? 'ti-message-plus' : 'ti-ticket' }} me-1"></i>{{ m.followup ? __('Acompanhamento', 'mailtoticket') : __('Chamado', 'mailtoticket') }} #{{ m.tickets_id }}</a>
+                              {% elseif m.discarded %}
+                                 <span class="badge bg-secondary-lt text-secondary"><i class="ti ti-trash me-1"></i>{{ __('Descartado', 'mailtoticket') }}</span>
+                              {% else %}
+                                 <span class="badge bg-blue-lt text-blue"><i class="ti ti-inbox me-1"></i>{{ __('Pendente', 'mailtoticket') }}</span>
+                                 {% if m.hint %}
+                                    <a class="badge {{ m.hint.closed ? 'bg-secondary-lt text-secondary' : 'bg-yellow-lt text-yellow' }}" href="{{ ticket_url }}?id={{ m.hint.id }}"
+                                       title="{{ __('O assunto cita este chamado', 'mailtoticket') }}"><i class="ti ti-link me-1"></i>{{ __('Cita', 'mailtoticket') }} #{{ m.hint.id }}{{ m.hint.closed ? ' (' ~ __('fechado', 'mailtoticket') ~ ')' : '' }}</a>
+                                 {% endif %}
+                              {% endif %}
+                           </td>
+                           <td class="text-end text-nowrap">
+                              <a class="btn btn-sm btn-primary" href="{{ view }}">
+                                 <i class="ti ti-eye me-1"></i>{{ m.tickets_id or m.discarded ? __('Ver', 'mailtoticket') : __('Ver / abrir chamado', 'mailtoticket') }}
+                              </a>
+                              {% if can_discard and not m.tickets_id %}
+                                 {% if m.discarded %}
+                                    <button type="submit" name="action" value="restore" formnovalidate class="btn btn-sm btn-outline-primary" onclick="this.form.one.value = '{{ m.key }}'" title="{{ __('Restaurar', 'mailtoticket') }}"><i class="ti ti-arrow-back-up"></i></button>
+                                 {% else %}
+                                    <button type="submit" name="action" value="discard" class="btn btn-sm btn-outline-danger" onclick="this.form.one.value = '{{ m.key }}'" title="{{ __('Descartar', 'mailtoticket') }}"><i class="ti ti-trash"></i></button>
+                                 {% endif %}
+                              {% endif %}
+                           </td>
+                        </tr>
+                     {% else %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">
+                           {% if next_url %}{{ __('Nenhum e-mail nesta faixa (varridos os 500 mais recentes a partir daqui). Clique em "Mais antigos" para continuar procurando.', 'mailtoticket') }}
+                           {% elseif status == 'pending' and not filtered %}<i class="ti ti-circle-check text-success me-1"></i>{{ __('Nenhum e-mail pendente.', 'mailtoticket') }} <a href="{{ all_url }}">{{ __('Ver todos', 'mailtoticket') }}</a>
+                           {% else %}{{ __('Nenhum e-mail encontrado com esses filtros.', 'mailtoticket') }}{% endif %}
+                        </td></tr>
+                     {% endfor %}
+                  </tbody>
+               </table>
+            </div>
+            <div class="card-footer d-flex justify-content-between align-items-center">
+               <span class="text-muted">
+                  {{ items|length }} {{ __('exibido(s)', 'mailtoticket') }}
+                  {% if not text_search %}— {{ total }} {{ filtered ? __('e-mail(s) no filtro', 'mailtoticket') : __('e-mail(s) na caixa', 'mailtoticket') }}{% endif %}
+                  {% if status == 'pending' %}({{ __('já tratados ficam ocultos', 'mailtoticket') }} — <a href="{{ all_url }}">{{ __('ver todos', 'mailtoticket') }}</a>){% endif %}
+               </span>
+               <div class="btn-group">
+                  {% if first_url %}<a class="btn btn-outline-secondary" href="{{ first_url }}"><i class="ti ti-chevrons-left"></i> {{ __('Início', 'mailtoticket') }}</a>{% endif %}
+                  {% if next_url %}<a class="btn btn-outline-secondary" href="{{ next_url }}">{{ __('Mais antigos', 'mailtoticket') }} <i class="ti ti-chevron-right"></i></a>{% endif %}
+               </div>
+            </div>
+         </div>
+      </form>
+   {% endif %}
+{% endif %}

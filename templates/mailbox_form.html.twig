@@ -1,0 +1,106 @@
+{% import 'components/form/fields_macros.html.twig' as fields %}
+{% set params = params ?? [] %}
+{% set no_header = no_header|default(not item.isNewItem() and not _get._in_modal|default(false)) %}
+
+<div class="asset">
+   {{ include('components/form/header.html.twig', {'in_twig': true}) }}
+   <div class="card-body d-flex flex-wrap">
+      <div class="col-12 col-xxl-12 flex-column">
+         <div class="d-flex flex-row flex-wrap flex-xl-nowrap">
+            <div class="row flex-row align-items-start flex-grow-1" style="min-width: 0;">
+               <div class="row flex-row">
+                  {{ fields.textField('name', item.fields['name'], __('Nome')) }}
+                  {{ fields.dropdownYesNo('is_active', item.isNewItem() ? 1 : item.fields['is_active'], __('Ativa', 'mailtoticket')) }}
+
+                  {# Servidor / porta / protocolo (mesmos campos do coletor do GLPI; inclui os tipos do OAuth IMAP) #}
+                  {{ include('pages/setup/mailcollector/server_config_fields.html.twig', {
+                     'connect_opts': connect_opts,
+                     'protocol_choices': protocol_choices,
+                     'connect_string': connect_string,
+                  }) }}
+                  {{ fields.textField('server_mailbox', connect_opts['mailbox'] ?: 'INBOX', __('Pasta', 'mailtoticket'), {
+                     helper: __('Pasta a ler, ex.: INBOX ou INBOX/Triagem', 'mailtoticket')
+                  }) }}
+
+                  {{ fields.textField('login', item.fields['login'], __('Login')) }}
+                  {{ fields.passwordField('passwd', '', __('Senha'), {
+                     helper: item.isNewItem() ? '' : __('Em branco = manter a atual', 'mailtoticket'),
+                     autocomplete: 'new-password'
+                  }) }}
+
+                  {% if oauth_accounts is not empty %}
+                     {% set oauth_select %}
+                        <select id="mtt_oauth_account" class="form-select">
+                           <option value="">{{ __('Selecione a conta autorizada', 'mailtoticket') }}</option>
+                           {% for acc in oauth_accounts %}
+                              <option value="{{ acc.email }}" data-app="{{ acc.app }}" {{ acc.email == item.fields['login'] ? 'selected' }}>
+                                 {{ acc.email }} ({{ acc.app_name }})
+                              </option>
+                           {% endfor %}
+                        </select>
+                     {% endset %}
+                     <div id="mtt_oauth_box" style="display:none;" class="col-12">
+                        {{ fields.htmlField('', oauth_select, __('Conta autorizada (OAuth IMAP)', 'mailtoticket'), {
+                           helper: __('Contas autorizadas em Configurar > OAuth IMAP. O login é preenchido com o e-mail da conta; não é usada senha.', 'mailtoticket')
+                        }) }}
+                     </div>
+                  {% endif %}
+
+                  {{ fields.numberField('filesize_max', item.fields['filesize_max'] ?? 2097152, __('Tamanho máximo dos anexos (bytes, 0 = não importar)', 'mailtoticket'), {min: 0}) }}
+                  {{ fields.dropdownYesNo('add_to_to_observer', item.fields['add_to_to_observer'] ?? 0, __('Destinatários (Para) como observadores', 'mailtoticket')) }}
+                  {{ fields.dropdownYesNo('add_cc_to_observer', item.fields['add_cc_to_observer'] ?? 0, __('Cópia (Cc) como observadores', 'mailtoticket')) }}
+                  <div class="col-12"><h4 class="mt-3 mb-1">{{ __('Padrões do chamado nesta caixa', 'mailtoticket') }}</h4>
+                     <div class="form-text mb-2">{{ __('Em branco = usa o padrão da entidade (Configurar > E-mail para chamado).', 'mailtoticket') }}</div></div>
+                  {{ fields.dropdownField('ITILCategory', 'itilcategories_id', item.fields['itilcategories_id'] ?? 0, __('Categoria padrão', 'mailtoticket'), {
+                     entity: item.fields['entities_id'] ?? 0, entity_sons: true
+                  }) }}
+                  {{ fields.dropdownArrayField('tickettype', item.fields['tickettype'] ?? 0, type_choices, __('Tipo'), {}) }}
+                  {{ fields.dropdownArrayField('urgency', item.fields['urgency'] ?? 0, urgency_choices, __('Urgência'), {}) }}
+                  {{ fields.textareaField('comment', item.fields['comment'], _n('Comment', 'Comments', get_plural_number())) }}
+               </div>
+            </div>
+         </div>
+      </div>
+   </div>
+   {{ include('components/form/buttons.html.twig') }}
+</div>
+
+{% if not item.isNewItem() and item.fields['last_check'] %}
+   <div class="alert {{ item.fields['last_error'] ? 'alert-danger' : 'alert-success' }} mt-3 mb-0">
+      <i class="ti {{ item.fields['last_error'] ? 'ti-alert-triangle' : 'ti-circle-check' }} me-1"></i>
+      {{ __('Última conexão:', 'mailtoticket') }} {{ item.fields['last_check']|date('d/m/Y H:i') }}
+      {% if item.fields['last_error'] %}— <strong>{{ item.fields['last_error'] }}</strong>{% else %}— {{ __('OK', 'mailtoticket') }}{% endif %}
+   </div>
+{% endif %}
+
+{% if not item.isNewItem() %}
+   <div class="mt-3 d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{{ test_url }}"><i class="ti ti-plug-connected me-1"></i>{{ __('Testar conexão', 'mailtoticket') }}</a>
+      <a class="btn btn-outline-secondary" href="{{ inbox_url }}"><i class="ti ti-inbox me-1"></i>{{ __('Abrir caixa', 'mailtoticket') }}</a>
+   </div>
+   <div class="form-text">{{ __('O teste usa os dados já salvos. Salve antes de testar.', 'mailtoticket') }}</div>
+{% endif %}
+
+<script>
+   $(function () {
+      const type = $('[name="server_type"]'), login = $('[name="login"]'),
+            pass = $('[name="passwd"]'), acc = $('#mtt_oauth_account'), box = $('#mtt_oauth_box');
+      function update() {
+         const m = /^\/imap-oauth-(\d+)$/.exec(type.val() || '');
+         if (m) {
+            pass.closest('.form-field, .mb-3, .col-12').first().hide();
+            box.show();
+            acc.find('option').each(function () {
+               const app = $(this).data('app');
+               $(this).prop('hidden', !!app && String(app) !== m[1]).prop('disabled', !!app && String(app) !== m[1]);
+            });
+         } else {
+            pass.closest('.form-field, .mb-3, .col-12').first().show();
+            box.hide();
+         }
+      }
+      type.on('change', update);
+      acc.on('change', function () { if (acc.val()) { login.val(acc.val()); } });
+      update();
+   });
+</script>
