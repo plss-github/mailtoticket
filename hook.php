@@ -140,6 +140,17 @@ function plugin_mailtoticket_install()
         );
     }
 
+    // Os direitos ficam em cache na sessão desde o login: reflete na sessão de quem está
+    // instalando para não exigir novo login e reconstrói o menu.
+    $activeProfile = (int) ($_SESSION['glpiactiveprofile']['id'] ?? 0);
+    if ($activeProfile > 0) {
+        $current = new ProfileRight();
+        if ($current->getFromDBByCrit(['profiles_id' => $activeProfile, 'name' => Rights::NAME])) {
+            $_SESSION['glpiactiveprofile'][Rights::NAME] = (int) $current->fields['rights'];
+        }
+        unset($_SESSION['glpimenu']);
+    }
+
     return true;
 }
 

@@ -4,7 +4,7 @@ use GlpiPlugin\Mailtoticket\Menu;
 use GlpiPlugin\Mailtoticket\ProfileTab;
 use GlpiPlugin\Mailtoticket\Rights;
 
-define('PLUGIN_MAILTOTICKET_VERSION', '1.4.0');
+define('PLUGIN_MAILTOTICKET_VERSION', '1.4.1');
 define('PLUGIN_MAILTOTICKET_MIN_GLPI', '11.0.0'); // inclusivo
 define('PLUGIN_MAILTOTICKET_MAX_GLPI', '11.1.0'); // exclusivo: aceita toda a série 11.0.x
 
