@@ -79,7 +79,7 @@ function plugin_mailtoticket_install()
             `per_page` int NOT NULL DEFAULT '-2',
             `tickettype` int NOT NULL DEFAULT '-2',
             `urgency` int NOT NULL DEFAULT '-2',
-            `itilcategories_id` int NOT NULL DEFAULT '-2',
+            `itilcategories_id` int {$sign} DEFAULT NULL COMMENT 'NULL = herdar da entidade pai',
             PRIMARY KEY (`id`),
             UNIQUE KEY `entities_id` (`entities_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC");
@@ -93,6 +93,14 @@ function plugin_mailtoticket_install()
             'urgency'           => (int) ($old['urgency'] ?? 0),
             'itilcategories_id' => (int) ($old['itilcategories_id'] ?? 0),
         ]);
+    } else {
+        // Antes: int com padrão -2 (herdar). Agora chave sem sinal: NULL = herdar.
+        $col = $DB->doQuery("SHOW COLUMNS FROM `$table` LIKE 'itilcategories_id'")->fetch_assoc();
+        if ($col && (stripos((string) $col['Type'], 'unsigned') === false || $col['Default'] !== null)) {
+            $DB->doQuery("ALTER TABLE `$table` MODIFY `itilcategories_id` int NULL DEFAULT NULL");
+            $DB->doQuery("UPDATE `$table` SET `itilcategories_id` = NULL WHERE `itilcategories_id` < 0");
+            $DB->doQuery("ALTER TABLE `$table` MODIFY `itilcategories_id` int {$sign} DEFAULT NULL COMMENT 'NULL = herdar da entidade pai'");
+        }
     }
 
     $migration->executeMigration();

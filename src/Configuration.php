@@ -33,7 +33,7 @@ final class Configuration
         $row = $DB->request(['FROM' => self::getTable(), 'WHERE' => ['entities_id' => $entities_id], 'LIMIT' => 1])->current();
         $out = [];
         foreach (self::FIELDS as $f) {
-            $out[$f] = isset($row[$f]) ? (int) $row[$f] : ($entities_id === 0 ? self::DEFAULTS[$f] : self::INHERIT);
+            $out[$f] = (isset($row[$f]) && $row[$f] !== null) ? (int) $row[$f] : ($entities_id === 0 ? self::DEFAULTS[$f] : self::INHERIT);
         }
         return $out;
     }
@@ -84,7 +84,7 @@ final class Configuration
         $row = [];
         foreach (self::FIELDS as $f) {
             if ($entities_id !== 0 && !empty($input['inherit'][$f])) {
-                $row[$f] = self::INHERIT;
+                $row[$f] = $f === 'itilcategories_id' ? null : self::INHERIT;
                 continue;
             }
             $v = (int) ($input[$f] ?? 0);
